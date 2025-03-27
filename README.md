@@ -9,8 +9,7 @@
 ├── docker-compose.yml               # Elasticsearch + Python 컨테이너 구성
 ├── Dockerfile                       # Python 환경 빌드 (elasticsearch-py 설치 포함)
 ├── requirements.txt                 # Python 의존 패키지 (elasticsearch, pandas 등)
-├── csv_KCS.csv                      # KCS 문서 데이터
-├── csv_KDS.csv                      # KDS 문서 데이터
+├── data/                            # 문서 데이터
 ├── load_to_es.py                    # CSV → Elasticsearch 색인 스크립트
 ├── search_from_es.py                # 검색어 입력 후 결과 출력 스크립트
 └── README.md                        # 사용 설명서
