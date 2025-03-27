@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+
+  es_search_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: es_only_search
+    depends_on:
+      - elasticsearch
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: tail -f /dev/null # 컨테이너를 띄운 상태로 유지 (직접 exec해서 실행)
+
+volumes:
+  esdata:
