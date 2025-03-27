@@ -1,133 +1,182 @@
-# 🔍 Django + Elasticsearch 문서 검색 시스템 구성 가이드
+# 🔍 Elasticsearch 문서 검색 시스템 구성 가이드
+
+---
 
 ## 📁 디렉터리 구조
 
 ```
 .
-├── Dockerfile                    # Django 앱 빌드용 Docker 설정
-├── README.md                     # 프로젝트 설명서
-├── csv_KCS.csv                   # KCS 문서 데이터 (CSV)
-├── csv_KDS.csv                   # KDS 문서 데이터 (CSV)
-├── db.sqlite3                    # SQLite DB (PostgreSQL 대신 테스트용 가능)
-├── docker-compose.yaml           # 전체 서비스 도커 컴포지션 정의
-├── manage.py                     # Django 명령줄 관리 도구
-├── requirements.txt              # 프로젝트 의존 패키지 목록
-├── search_app/                   # 문서 검색 기능 관련 앱
-│   ├── __init__.py
-│   ├── apps.py                   # 앱 등록 정보
-│   ├── documents.py              # Elasticsearch용 문서 정의
-│   ├── management/commands/      # 커맨드: load_csv
-│   │   └── load_csv.py           # CSV 데이터를 모델로 삽입하는 스크립트
-│   ├── migrations/               # DB 마이그레이션 기록
-│   │   ├── 0001_initial.py
-│   │   └── __init__.py
-│   ├── models.py                 # StandardDoc 모델 정의
-│   ├── templates/search_app/     # 검색 결과 HTML 템플릿 (search.html)
-│   ├── urls.py                   # 이 앱의 URL 라우팅
-│   └── views.py                  # 검색 뷰 로직 정의
-├── search_project/               # Django 프로젝트 설정
-│   ├── __init__.py
-│   ├── settings.py               # 전체 프로젝트 설정
-│   ├── urls.py                   # 전체 URL 라우팅
-│   └── wsgi.py                   # WSGI 서버 진입점
-├── static/                       # 정적 파일 (이미지, CSS 등)
-│   └── 한맥기술_좌우_국문.png     # 삽입한 회사 로고 이미지
-└── wait-for-it.sh                # DB 컨테이너 대기 스크립트
+├── docker-compose.yml               # Elasticsearch + Python 컨테이너 구성
+├── Dockerfile                       # Python 환경 빌드 (elasticsearch-py 설치 포함)
+├── requirements.txt                 # Python 의존 패키지 (elasticsearch, pandas 등)
+├── csv_KCS.csv                      # KCS 문서 데이터
+├── csv_KDS.csv                      # KDS 문서 데이터
+├── load_to_es.py                    # CSV → Elasticsearch 색인 스크립트
+├── search_from_es.py                # 검색어 입력 후 결과 출력 스크립트
+└── README.md                        # 사용 설명서
 ```
 
 ---
 
-## 🛠️ 데이터 처리 명령어
+## ▶️ 실행 방법
 
 ```bash
-# 1. 마이그레이션 파일 생성
-docker exec -it django_elasticsearch-web-1 python manage.py makemigrations search_app
-
-# 2. 데이터베이스에 테이블 생성
-docker exec -it django_elasticsearch-web-1 python manage.py migrate
-
-# 3. CSV 데이터를 DB에 삽입
-docker exec -it django_elasticsearch-web-1 python manage.py load_csv
-
-# 4. Elasticsearch 인덱스를 재생성하고 색인화
-docker exec -it django_elasticsearch-web-1 python manage.py search_index --rebuild
-
-# 참고. 데이터베이스 초기화
-docker exec -it django_elasticsearch-web-1 python manage.py flush -> 'yes'
-docker compose down -v
+# 1. 컨테이너 빌드 및 실행
 docker compose up -d
-```
 
-| 명령어                          | 설명                                              |
-|-------------------------------|---------------------------------------------------|
-| `makemigrations`              | 모델 변경사항 추적, 마이그레이션 파일 생성       |
-| `migrate`                     | 마이그레이션 파일을 기반으로 DB에 테이블 생성     |
-| `load_csv`                    | CSV(KCS/KDS) 파일 데이터를 DB에 삽입              |
-| `search_index --rebuild`      | 기존 색인 제거 후 인덱스 생성 및 데이터 색인      |
+# 2. 컨테이너 접속
+docker exec -it es_only_search bash
+
+# 3. Elasticsearch 색인 실행
+python load_to_es.py
+
+# 4. 검색 테스트 실행
+python search_from_es.py
+```
 
 ---
 
-## ✅ Elasticsearch 색인 상태 확인
+## 🧱 컨테이너 구성 설명
+
+| 컨테이너 이름    | 역할                          | 주요 기능                                              |
+| ---------------- | ----------------------------- | ------------------------------------------------------ |
+| `elasticsearch`  | Elasticsearch 서버            | 문서 색인 및 검색 기능 제공 (REST API: 9200 포트 사용) |
+| `es_only_search` | Python 실행 환경 (클라이언트) | CSV 데이터 색인, 검색어 입력 후 검색 결과 출력         |
+
+---
+
+## 🧠 Elasticsearch 개요
+
+Elasticsearch는 대규모 문서 기반 데이터를 빠르게 색인하고 검색할 수 있는 **오픈소스 검색 엔진**입니다.  
+`RESTful API` 기반으로 동작하며, Python에서는 `elasticsearch-py` 라이브러리를 통해 접근할 수 있습니다.
+
+| 용어           | 의미                                           |
+| -------------- | ---------------------------------------------- |
+| 색인(Index)    | 문서들이 저장되는 공간 (DB의 테이블 개념)      |
+| 문서(Document) | 색인된 단위 데이터 (JSON 형식)                 |
+| 필드(Field)    | 문서 내의 개별 속성 (예: code, name, contents) |
+| 질의(Query)    | 문서를 검색하기 위한 조건 (검색어, 필터 등)    |
+
+---
+
+## 📌 Elasticsearch 색인 흐름
+
+`load_to_es.py` 스크립트를 실행하면 다음과 같은 과정으로 문서가 색인됩니다:
+
+```
+CSV 파일 → Pandas DataFrame → Python dict → Elasticsearch.index() → standard_docs 인덱스에 저장
+```
+
+---
+
+## 📄 색인 코드 분석 (`load_to_es.py`)
+
+```python
+es = Elasticsearch("http://elasticsearch:9200")
+
+def index_csv(file_path, code_type):
+    df = pd.read_csv("data/" + file_path)
+    for _, row in tqdm(df.iterrows(), total=len(df)):
+        doc = {
+            "code_type": code_type,
+            "code": row.get("code", ""),
+            "name": row.get("name", ""),
+            "contents": row.get("contents", "")
+        }
+        es.index(index="standard_docs", document=doc)
+```
+
+| 항목                    | 설명                                        |
+| ----------------------- | ------------------------------------------- |
+| `Elasticsearch(...)`    | Elasticsearch 서버와 연결 (기본 포트: 9200) |
+| `pd.read_csv(...)`      | CSV 파일을 DataFrame으로 읽어들임           |
+| `es.index(...)`         | 문서 한 건씩 Elasticsearch에 색인           |
+| `index="standard_docs"` | Elasticsearch 인덱스 이름 (자동 생성됨)     |
+| `document=doc`          | 저장할 JSON 형식의 문서 데이터 (dict)       |
+
+---
+
+## 🔍 Elasticsearch 검색 흐름
+
+`search_from_es.py`는 사용자가 검색어를 입력하면 Elasticsearch에 쿼리를 보내고 결과를 출력합니다.
+
+```python
+es = Elasticsearch("http://elasticsearch:9200")
+
+def search(query, mode="fulltext"):
+    if mode == "like":
+        es_query = {
+            "query": {
+                "wildcard": {
+                    "contents": f"*{query}*"
+                }
+            }
+        }
+    else:
+        es_query = {
+            "query": {
+                "multi_match": {
+                    "query": query,
+                    "fields": ["name", "contents"]
+                }
+            },
+            "highlight": {
+                "fields": {
+                    "contents": {}
+                }
+            }
+        }
+
+    res = es.search(index="standard_docs", body=es_query)
+    ...
+```
+
+---
+
+## 🔍 검색 모드 비교
+
+| 모드       | 설명                              | 쿼리 방식     | 특징                         |
+| ---------- | --------------------------------- | ------------- | ---------------------------- |
+| `fulltext` | 형태소 분석 기반 자연어 검색      | `multi_match` | 의미 기반 검색, 정렬 정확도  |
+| `like`     | 단순 문자열 포함 여부 (부분 일치) | `wildcard`    | SQL의 `LIKE '%word%'`와 유사 |
+
+- **`fulltext` 모드**는 기본적으로 Elasticsearch가 제공하는 형태소 분석을 활용해 `"지반계측"` → `"지반", "계측"`으로 분석해 검색
+- **`like` 모드**는 형태소 분석 없이 해당 문자열이 포함된 문서만 찾음
+
+## ✅ 1. Full-text 검색 쿼리 (`multi_match`)
+
+| 키                         | 의미                                                     |
+| -------------------------- | -------------------------------------------------------- |
+| `"query"`                  | 검색 조건의 최상위 키                                    |
+| `"multi_match"`            | 여러 필드를 대상으로 full-text 검색                      |
+| `"query"` (내부)           | 사용자가 입력한 검색어                                   |
+| `"fields"`                 | 검색 대상 필드 목록 (예: `"name"`, `"contents"`)         |
+| `"highlight"`              | 검색어가 포함된 부분을 하이라이팅                        |
+| `"fields"` (하이라이트 내) | 하이라이트 적용 대상 필드 (`"contents"`에서 강조 처리됨) |
+
+## ✅ 2. Like 검색 쿼리 (`wildcard`)
+
+| 키           | 의미                                                                  |
+| ------------ | --------------------------------------------------------------------- |
+| `"query"`    | 검색 조건                                                             |
+| `"wildcard"` | `SQL LIKE` 검색처럼 부분 문자열 검색 수행                             |
+| `"contents"` | 검색 대상 필드                                                        |
+| `*{query}*`  | 와일드카드 패턴: 앞뒤 어느 위치든 포함되면 매칭 (`*` = 0개 이상 문자) |
+
+---
+
+## 🧪 색인 및 검색 확인
+
+### ✅ 색인된 문서 개수 확인
 
 ```bash
-curl -X GET http://localhost:9200/_cat/indices?v
+curl -X GET "http://localhost:9200/standard_docs/_count?pretty"
 ```
 
-예시 출력:
-```
-health status index         uuid      pri rep docs.count docs.deleted store.size
-yellow open   standard_docs abc123... 1   1     1890          0        43.5mb
-```
-
----
-
-## ✅ 슈퍼유저 생성 (관리자 페이지 접속용)
+### ✅ 전체 검색 테스트 (예: "지반계측")
 
 ```bash
-docker exec -it django_elasticsearch-web-1 python manage.py createsuperuser
+curl -X GET "http://localhost:9200/standard_docs/_search?q=지반계측&pretty"
 ```
 
-접속: [http://localhost:9100/admin](http://localhost:9100/admin)
-
 ---
-
-## 🔍 검색 페이지 접속
-
-- 일반 사용자 검색 UI: [http://localhost:9100](http://localhost:9100)
-
----
-
-## 📦 Elasticsearch 직접 쿼리 테스트
-
-```bash
-curl -X POST "http://localhost:9200/standard_docs/_search?pretty" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "query": {
-      "multi_match": {
-        "query": "건축",
-        "fields": ["name", "contents"]
-      }
-    }
-  }'
-```
-
-| 필드 이름            | 설명                                      |
-|----------------------|-------------------------------------------|
-| `_index`             | 인덱스 이름 (`standard_docs`)             |
-| `_score`             | 검색 관련도 점수 (높을수록 상위 노출됨)   |
-| `_source.code_type`  | 문서 분류 (KCS, KDS 등)                   |
-| `_source.code`       | 문서 고유 코드 번호                       |
-| `_source.name`       | 문서 제목                                 |
-| `_source.contents`   | 문서 내용 전문                            |
-
----
-
-## 🎨 UI 기능 요약 (`search.html`)
-
-| 기능                  | 설명                                                       |
-|-----------------------|------------------------------------------------------------|
-| ✅ 검색어 하이라이팅  | 검색어가 노란색으로 강조됨 (`highlight` 사용)              |
-| ✅ 실시간 검색        | 입력 시 자동으로 결과 반영 (JavaScript `fetch`)            |
-| ✅ 페이지네이션       | 검색 결과가 많을 경우 페이지 이동 지원                      |
-| ✅ 회사 로고 삽입     | `/static/` 경로의 이미지 출력 (`한맥기술_좌우_국문.png`)    |
